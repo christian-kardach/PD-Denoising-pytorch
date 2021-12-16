@@ -13,47 +13,6 @@ from PIL import Image
 import scipy.io as sio
 import tifffile as tiff
 
-parser = argparse.ArgumentParser(description="PD-denoising")
-# model parameter
-parser.add_argument("--num_of_layers", type=int, default=20, help="Number of total layers")
-parser.add_argument("--delog", type=str, default="logsdc", help='path of log and model files')
-parser.add_argument("--mode", type=str, default="M", help='DnCNN-B (B) or MC-AWGN-RVIN (MC)')
-# tested noise type
-parser.add_argument("--color", type=int, default=0, help='[0]gray [1]color')
-parser.add_argument("--real_n", type=int, default=0,
-                    help='real noise or synthesis noise [0]synthetic noises [1]real noisy image wo gnd [2]real noisy image with gnd')
-parser.add_argument("--spat_n", type=int, default=0,
-                    help='whether to add spatial-variant signal-dependent noise, [0]no spatial [1]Gaussian-possion noise')
-# pixel-shuffling parameter
-parser.add_argument("--ps", type=int, default=0,
-                    help='pixel shuffle [0]no pixel-shuffle [1]adaptive pixel-ps [2]pre-set stride')
-parser.add_argument("--wbin", type=int, default=512, help='patch size while testing on full images')
-parser.add_argument("--ps_scale", type=int, default=2, help='if ps==2, use this pixel shuffle stride')
-# down-scaling parameter
-parser.add_argument("--scale", type=float, default=1, help='resize the original images')
-parser.add_argument("--rescale", type=int, default=1, help='resize it back to the origianl size after downsampling')
-# testing data path and processing
-parser.add_argument("--test_data", type=str, default='Set12', help='testing data path')
-parser.add_argument("--test_data_gnd", type=str, default='Set12', help='testing data ground truth path if it exists')
-parser.add_argument("--cond", type=int, default=1,
-                    help='Testing mode using noise map of: [0]Groundtruth [1]Estimated [2]External Input')
-parser.add_argument("--test_noise_level", nargs="+", type=int, help='input noise level while generating noisy images')
-parser.add_argument("--ext_test_noise_level", nargs="+", type=int, help='external noise level input used if cond==2')
-# refining on the estimated noise map
-parser.add_argument("--refine", type=int, default=0,
-                    help='[0]no refinement of estimation [1]refinement of the estimation')
-parser.add_argument("--refine_opt", type=int, default=0,
-                    help='[0]get the most frequent [1]the maximum [2]Gaussian smooth [3]average value of 0 and 1 opt')
-parser.add_argument("--zeroout", type=int, default=0, help='[0]no zeroing out [1]zeroing out some maps')
-parser.add_argument("--keep_ind", nargs="+", type=int, help='[0 1 2]Gaussian [3 4 5]Impulse')
-# output options
-parser.add_argument("--output_map", type=int, default=0, help='whether to output maps')
-parser.add_argument("--k", type=float, default=1, help='merging factor between details and background')
-parser.add_argument("--out_dir", type=str, default="results_bc", help='path of output files')
-
-opt = parser.parse_args()
-print(opt)
-
 # the limitation range of each type of noise level: [0]Gaussian [1]Impulse
 limit_set = [[0, 75], [0, 80]]
 
@@ -62,13 +21,20 @@ def img_normalize(data):
     return data / 255.
 
 
-def main():
+"""
+def main(scale=1, wbin=128, ps=0, ps_scale=2, real=1, real_n=0, k=0, mode="MC", color=1, output_map=0, zeroout=0, keep_ind=0,
+         num_of_layers=20, test_data_gnd="Set12", delog="logs/logs_color_MC_AWGN_RVIN", cond=1, refine=0, refine_opt=1, test_data="beijing",
+         out_dir="results/beijing"):
+"""
+
+
+def main(opt):
     if not os.path.exists(opt.out_dir):
         os.makedirs(opt.out_dir)
+
     # Build model
     print('Loading model ...\n')
     c = 1 if opt.color == 0 else 3
-
     net = DnCNN_c(channels=c, num_of_layers=opt.num_of_layers, num_of_est=2 * c)
     est_net = Estimation_direct(c, 2 * c)
 
@@ -100,9 +66,9 @@ def main():
             Img_gnd = Img_gnd[:, :, ::-1]
             Img_gnd = cv2.resize(Img_gnd, (0, 0), fx=opt.scale, fy=opt.scale)
             Img_gnd = img_normalize(np.float32(Img_gnd))
+
         # image
         Img = cv2.imread(f)  # input image with w*h*c
-        # img = tiff.imread(f)
 
         w, h, _ = Img.shape
         Img = Img[:, :, ::-1]  # change it to RGB
@@ -124,26 +90,35 @@ def main():
         max_Res_out = np.zeros([w, h, 3])
 
         print('Splitting and Testing.....')
-        wbin = opt.wbin
+
         i = 0
-
-        patches = 0
-        #patches_total = w / wbin
-
+        total_patches = 0
         while i < w:
-            i_end = min(i + wbin, w)
-            print(i_end)
+            i_end = min(i + opt.wbin, w)
             j = 0
             while j < h:
-                j_end = min(j + wbin, h)
+                j_end = min(j + opt.wbin, h)
+                j = j_end
+                total_patches += 1
+            i = i_end
+
+        print("Total patches:", total_patches)
+        i = 0
+        patches = 0
+        while i < w:
+            i_end = min(i + opt.wbin, w)
+            j = 0
+            while j < h:
+                j_end = min(j + opt.wbin, h)
                 patch = Img[i:i_end, j:j_end, :]
-                #print(patches)
+                print("Doing patch {patches} of {total_patches}".format(patches=patches, total_patches=total_patches))
+
                 patch_merge_out_numpy, max_Res_out_patch, max_NM_tensor_out_patch = denoiser(patch, c, pss, model,
                                                                                              model_est, opt)
                 merge_out[i:i_end, j:j_end, :] = patch_merge_out_numpy
 
-                #print("MaxRes:", max_Res_out_patch.shape)
-                #print("max_NM:", max_NM_tensor_out_patch.shape)
+                # print("MaxRes:", max_Res_out_patch.shape)
+                # print("max_NM:", max_NM_tensor_out_patch.shape)
 
                 max_Res_out[i:i_end, j:j_end, :] = max_Res_out_patch
                 max_NM_tensor_out[i:i_end, j:j_end, :] = max_NM_tensor_out_patch
@@ -152,22 +127,48 @@ def main():
                 patches += 1
             i = i_end
 
-        exportPath = os.path.normpath(
+        export_path = os.path.normpath(
             os.path.join(opt.out_dir, file_name + '_denoised_' + str(pss) + '_k' + str(opt.k) + '.png'))
-        exportPath_res = os.path.normpath(
+        export_path_res = os.path.normpath(
             os.path.join(opt.out_dir, file_name + '_mask_pss' + str(pss) + '_k' + str(opt.k) + '.png'))
-        exportPath_nm = os.path.normpath(
+        export_path_nm = os.path.normpath(
             os.path.join(opt.out_dir, file_name + '_nm_pss' + str(pss) + '_k' + str(opt.k) + '.png'))
 
         print("Exporting images: ")
-        print(exportPath)
-
-        cv2.imwrite(exportPath, merge_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-        cv2.imwrite(exportPath_res, max_Res_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-        cv2.imwrite(exportPath_nm, max_NM_tensor_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-
+        print(export_path)
+        cv2.imwrite(export_path, merge_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        print(export_path_res)
+        cv2.imwrite(export_path_res, max_Res_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        print(export_path_nm)
+        cv2.imwrite(export_path_nm, max_NM_tensor_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
         print('done!')
 
 
+class Opt:
+    color = 1
+    cond = 1
+    delog = 'logs/logs_color_MC_AWGN_RVIN'
+    ext_test_noise_level = None
+    k = 0.0
+    keep_ind = [0]
+    mode = 'MC'
+    num_of_layers = 20
+    out_dir = 'results'
+    output_map = 0
+    ps = 0
+    ps_scale = 2
+    real_n = 1
+    refine = 0
+    refine_opt = 1
+    rescale = 1
+    scale = 1.0
+    spat_n = 0
+    test_data = 'astro'
+    test_data_gnd = 'Set12'
+    test_noise_level = None
+    wbin = 128
+    zeroout = 0
+
+
 if __name__ == "__main__":
-    main()
+    main(Opt)
