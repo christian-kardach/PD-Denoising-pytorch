@@ -1,17 +1,8 @@
-import cv2
 import os
-import argparse
 import glob
-import numpy as np
-import torch
-import torch.nn as nn
-from torch.autograd import Variable
 from models import *
-from utils import *
 from denoiser import *
-from PIL import Image
-import scipy.io as sio
-import tifffile as tiff
+import progressbar
 
 # the limitation range of each type of noise level: [0]Gaussian [1]Impulse
 limit_set = [[0, 75], [0, 80]]
@@ -21,13 +12,6 @@ def img_normalize(data):
     return data / 255.
 
 
-"""
-def main(scale=1, wbin=128, ps=0, ps_scale=2, real=1, real_n=0, k=0, mode="MC", color=1, output_map=0, zeroout=0, keep_ind=0,
-         num_of_layers=20, test_data_gnd="Set12", delog="logs/logs_color_MC_AWGN_RVIN", cond=1, refine=0, refine_opt=1, test_data="beijing",
-         out_dir="results/beijing"):
-"""
-
-
 def main(opt):
     if not os.path.exists(opt.out_dir):
         os.makedirs(opt.out_dir)
@@ -35,8 +19,15 @@ def main(opt):
     # Build model
     print('Loading model ...\n')
     c = 1 if opt.color == 0 else 3
+
+    if opt.color == 0:
+        opt.delog = 'logs/logs_gray_MC_AWGN_RVIN'
+    else:
+        opt.delog = 'logs/logs_color_MC_AWGN_RVIN'
+
     net = DnCNN_c(channels=c, num_of_layers=opt.num_of_layers, num_of_est=2 * c)
     est_net = Estimation_direct(c, 2 * c)
+
 
     device_ids = [0]
     model = nn.DataParallel(net, device_ids=device_ids).cuda()
@@ -86,10 +77,11 @@ def main(opt):
             pss = opt.ps_scale
 
         merge_out = np.zeros([w, h, 3])
-        max_NM_tensor_out = np.zeros([w, h, 3])
-        max_Res_out = np.zeros([w, h, 3])
+        noise_map_output = np.zeros([w, h, 3])
+        background_out = np.zeros([w, h, 3])
+        details_out = np.zeros([w, h, 3])
 
-        print('Splitting and Testing.....')
+        # print('Splitting and Testing.....')
 
         i = 0
         total_patches = 0
@@ -102,7 +94,7 @@ def main(opt):
                 total_patches += 1
             i = i_end
 
-        print("Total patches:", total_patches)
+        bar = progressbar.ProgressBar(max_value=total_patches)
         i = 0
         patches = 0
         while i < w:
@@ -111,58 +103,67 @@ def main(opt):
             while j < h:
                 j_end = min(j + opt.wbin, h)
                 patch = Img[i:i_end, j:j_end, :]
-                print("Doing patch {patches} of {total_patches}".format(patches=patches, total_patches=total_patches))
+                bar.update(patches)
 
-                patch_merge_out_numpy, max_Res_out_patch, max_NM_tensor_out_patch = denoiser(patch, c, pss, model,
+                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch, c, pss, model,
                                                                                              model_est, opt)
                 merge_out[i:i_end, j:j_end, :] = patch_merge_out_numpy
 
-                # print("MaxRes:", max_Res_out_patch.shape)
-                # print("max_NM:", max_NM_tensor_out_patch.shape)
-
-                max_Res_out[i:i_end, j:j_end, :] = max_Res_out_patch
-                max_NM_tensor_out[i:i_end, j:j_end, :] = max_NM_tensor_out_patch
+                noise_map_output[i:i_end, j:j_end, :] = noise_patch
+                details_out[i:i_end, j:j_end, :] = details_patch
+                background_out[i:i_end, j:j_end, :] = background_patch
 
                 j = j_end
                 patches += 1
             i = i_end
 
-        export_path = os.path.normpath(
-            os.path.join(opt.out_dir, file_name + '_denoised_' + str(pss) + '_k' + str(opt.k) + '.png'))
-        export_path_res = os.path.normpath(
-            os.path.join(opt.out_dir, file_name + '_mask_pss' + str(pss) + '_k' + str(opt.k) + '.png'))
-        export_path_nm = os.path.normpath(
-            os.path.join(opt.out_dir, file_name + '_nm_pss' + str(pss) + '_k' + str(opt.k) + '.png'))
+        export_path_merged = os.path.normpath(
+            os.path.join(opt.out_dir, file_name + '_merged.png'))
 
-        print("Exporting images: ")
-        print(export_path)
-        cv2.imwrite(export_path, merge_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-        print(export_path_res)
-        cv2.imwrite(export_path_res, max_Res_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-        print(export_path_nm)
-        cv2.imwrite(export_path_nm, max_NM_tensor_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        export_path_noise = os.path.normpath(
+            os.path.join(opt.out_dir, file_name + '_noise_mask.png'))
+
+        export_path_details = os.path.normpath(
+            os.path.join(opt.out_dir, file_name + '_details.png'))
+
+        export_path_background = os.path.normpath(
+            os.path.join(opt.out_dir, file_name + '_background.png'))
+
+        print("\nExporting images: ")
+        print(export_path_merged)
+        cv2.imwrite(export_path_merged, merge_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+        print(export_path_noise)
+        cv2.imwrite(export_path_noise, noise_map_output[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+        print(export_path_details)
+        cv2.imwrite(export_path_details, details_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+        print(export_path_background)
+        cv2.imwrite(export_path_background, background_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
         print('done!')
 
 
 class Opt:
     color = 1
     cond = 1
-    delog = 'logs/logs_color_MC_AWGN_RVIN'
+    delog = ''  # model path, not used
     ext_test_noise_level = None
     k = 0.0
     keep_ind = [0]
     mode = 'MC'
     num_of_layers = 20
     out_dir = 'results'
-    output_map = 0
-    ps = 0
-    ps_scale = 2
-    real_n = 1
-    refine = 0
-    refine_opt = 1
-    rescale = 1
-    scale = 1.0
-    spat_n = 0
+    output_map = 0  # whether to output maps
+    ps = 0  # pixel shuffle [0]no pixel-shuffle [1]adaptive pixel-ps [2]pre-set stride
+    ps_scale = 2 # if ps==2, use this pixel shuffle stride
+    real_n = 1  # [0]synthetic noises [1]real noisy image wo gnd [2]real noisy image with gnd'
+    refine = 0  # [0]no refinement of estimation [1]refinement of the estimation
+    refine_opt = 0  # [0]get the most frequent [1]the maximum [2]Gaussian smooth [3]average value of 0 and 1 opt
+    rescale = 1  # resize it back to the original size after downscaling
+    scale = 1.0  # resize the original images
+    spat_n = 0  # whether to add spatial-variant signal-dependent noise, [0]no spatial [1]Gaussian-possion noise
     test_data = 'astro'
     test_data_gnd = 'Set12'
     test_noise_level = None

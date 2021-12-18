@@ -33,7 +33,7 @@ def denoiser(img, c, pss, model, model_est, opt):
     INoisy = np2ts(noisy_img, opt.color)
     INoisy = torch.clamp(INoisy, 0., 1.)
     True_Res = INoisy - ISource
-    ISource, INoisy, True_Res = Variable(ISource.cuda()), Variable(INoisy.cuda()), Variable(True_Res.cuda())
+    ISource, INoisy, True_Res = ISource.cuda(), INoisy.cuda(), True_Res.cuda()
 
     if opt.mode == "MC":
         # obtain the corrresponding input_map
@@ -51,7 +51,7 @@ def denoiser(img, c, pss, model, model_est, opt):
             noise_map[0, :, :, :] = np.reshape(np.tile(noise_level_list_n, img.shape[0] * img.shape[1]),
                                                (2 * c, img.shape[0], img.shape[1]))
             NM_tensor = torch.from_numpy(noise_map).type(torch.FloatTensor)
-            NM_tensor = Variable(NM_tensor.cuda(), volatile=True)
+            NM_tensor = NM_tensor.cuda()
         # use the estimated noise-level map for blind denoising
         elif opt.cond == 1:  # if we use the estimated map directly
             NM_tensor = torch.clamp(model_est(INoisy), 0., 1.)
@@ -76,7 +76,7 @@ def denoiser(img, c, pss, model, model_est, opt):
     max_Out = torch.clamp(INoisy - max_Res, 0., 1.)
     max_out_numpy = visual_va2np(max_Out, opt.color, opt.ps, pss, 1, opt.rescale, w, h, c)
 
-    max_Res_out = visual_va2np(max_Res, opt.color, opt.ps, pss, 1, opt.rescale, w, h, c)
+    noise_map_output = visual_va2np(max_Res, opt.color, opt.ps, pss, 1, opt.rescale, w, h, c)
 
     del max_Out
     del max_Res
@@ -92,12 +92,11 @@ def denoiser(img, c, pss, model, model_est, opt):
             for column in range(pss):
                 re_test = visual_va2np(Out, opt.color, 1, pss, 1, opt.rescale, w, h, c, 1,
                                        visual_va2np(INoisy, opt.color), [row, column]) / 255.
-                # cv2.imwrite(os.path.join(r"D:\Development\PD-Denoising-pytorch\results\beijing\test" + '_%d_%d.png' % (row, column)), re_test[:,:,::-1]*255.)
                 re_test = np.expand_dims(re_test, 0)
                 if opt.color == 0:  # if gray image
                     re_test = np.expand_dims(re_test[:, :, :, 0], 3)
                 re_test_tensor = torch.from_numpy(np.transpose(re_test, (0, 3, 1, 2))).type(torch.FloatTensor)
-                re_test_tensor = Variable(re_test_tensor.cuda())
+                re_test_tensor = re_test_tensor.cuda()
                 re_NM_tensor = torch.clamp(model_est(re_test_tensor), 0., 1.)
                 if opt.refine == 1:  # if we need to refine the map before putting it to the denoiser
                     re_NM_tensor_bundle = level_refine(re_NM_tensor, opt.refine_opt,
@@ -122,12 +121,9 @@ def denoiser(img, c, pss, model, model_est, opt):
     out_numpy = out_numpy.astype(np.float32)  # details
     max_out_numpy = max_out_numpy.astype(np.float32)  # background
 
-    # cv2.imwrite("D:\\Development\\PD-Denoising-pytorch\\results\\beijing\\details.png", out_numpy[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-    # cv2.imwrite("D:\\Development\\PD-Denoising-pytorch\\results\\beijing\\background.png", max_out_numpy[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-
     # merging the details and background to balance the effect
     k = opt.k
     merge_out_numpy = (1 - k) * out_numpy + k * max_out_numpy
     merge_out_numpy = merge_out_numpy.astype(np.float32)
 
-    return merge_out_numpy, max_Res_out, max_out_numpy
+    return merge_out_numpy, noise_map_output, out_numpy, max_out_numpy
