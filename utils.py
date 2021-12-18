@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 from skimage.metrics import peak_signal_noise_ratio
-from torch.autograd import Variable
 import cv2
 import scipy.ndimage
 import scipy.io as sio
@@ -11,6 +10,15 @@ import matplotlib as mpl
 
 mpl.use('Agg')
 import matplotlib.pyplot as plt
+
+
+def isgray(imgpath):
+    img = cv2.imread(imgpath)
+    if len(img.shape) < 3: return True
+    if img.shape[2] == 1: return True
+    b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+    if (b == g).all() and (b == r).all(): return True
+    return False
 
 
 def weights_init_kaiming(m):
@@ -221,7 +229,7 @@ def decide_scale_factor(noisy_image, estimation_model, color=1, thre=0, plot_fla
     for pss in range(1, stopping + 1):  # scaling factor from 1 to the limit
         noisy_image = pixelshuffle(noisy_image, pss)
         INoisy = np2ts(noisy_image, color)
-        INoisy = Variable(INoisy.cuda())
+        INoisy = INoisy.cuda()
         EMap = torch.clamp(estimation_model(INoisy), 0., 1.)
         EPDF = get_pdf_in_maps(EMap, mark + str(pss), c)[0]
         if flag != 0:
@@ -272,7 +280,7 @@ def get_smooth_maps(lm, dilk=50, gsd=10):
         ref_lm_numpy[:, :, c] = nmap_dilation
         # ref_lm_numpy[:, :, c] = scipy.ndimage.filters.gaussian_filter(nmap_dilation, gsd)
     RF_tensor = np2ts(ref_lm_numpy)
-    RF_tensor = Variable(RF_tensor.cuda(), volatile=True)
+    RF_tensor = RF_tensor.cuda()
 
 
 def zeroing_out_maps(lm, keep=0):
@@ -289,7 +297,7 @@ def zeroing_out_maps(lm, keep=0):
             ref_lm_numpy[:, :, c] = 0.
     print(ref_lm_numpy)
     RF_tensor = np2ts(ref_lm_numpy)
-    RF_tensor = Variable(RF_tensor.cuda(), volatile=True)
+    RF_tensor = RF_tensor.cuda()
     return RF_tensor
 
 
@@ -325,7 +333,7 @@ def level_refine(NM_tensor, ref_mode, chn=3):
             noise_map[n, :, :, :] = np.reshape(np.tile(nl_list[n], NM_tensor.size()[2] * NM_tensor.size()[3]),
                                                (chn, NM_tensor.size()[2], NM_tensor.size()[3]))
         RF_tensor = torch.from_numpy(noise_map).type(torch.FloatTensor)
-        RF_tensor = Variable(RF_tensor.cuda())
+        RF_tensor = RF_tensor.cuda()
 
     elif ref_mode == 2:
         RF_tensor = get_smooth_maps(NM_tensor, 10, 5)
@@ -338,7 +346,7 @@ def level_refine(NM_tensor, ref_mode, chn=3):
         noise_map[0, :, :, :] = np.reshape(np.tile(nl_list, NM_tensor.size()[2] * NM_tensor.size()[3]),
                                            (chn, NM_tensor.size()[2], NM_tensor.size()[3]))
         RF_tensor = torch.from_numpy(noise_map).type(torch.FloatTensor)
-        RF_tensor = Variable(RF_tensor.cuda(), volatile=True)
+        RF_tensor = RF_tensor.cuda()
 
     return (RF_tensor, nl_list)
 
@@ -462,13 +470,13 @@ def generate_denoise(image, model, noise_level_list):
     # input images
     ISource = np2ts(image)
     ISource = torch.clamp(ISource, 0., 1.)
-    ISource = Variable(ISource.cuda(), volatile=True)
+    ISource = ISource.cuda()
     # input denoise conditions
     noise_map = np.zeros((1, 6, image.shape[0], image.shape[1]))  # initialize the noise map before concatenating
     noise_map[0, :, :, :] = np.reshape(np.tile(noise_level_list, image.shape[0] * image.shape[1]),
                                        (6, image.shape[0], image.shape[1]))
     NM_tensor = torch.from_numpy(noise_map).type(torch.FloatTensor)
-    NM_tensor = Variable(NM_tensor.cuda(), volatile=True)
+    NM_tensor = NM_tensor.cuda()
     # generate blur images
     Res = model(ISource, NM_tensor)
     Out = torch.clamp(ISource - Res, 0., 1.)

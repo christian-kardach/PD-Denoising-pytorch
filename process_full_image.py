@@ -1,5 +1,7 @@
 import os
 import glob
+
+import utils
 from models import *
 from denoiser import *
 import progressbar
@@ -12,12 +14,12 @@ def img_normalize(data):
     return data / 255.
 
 
-def main(opt):
+def main(input_file, opt):
     if not os.path.exists(opt.out_dir):
         os.makedirs(opt.out_dir)
 
     # Build model
-    print('Loading model ...\n')
+    print('Loading model...')
     c = 1 if opt.color == 0 else 3
 
     if opt.color == 0:
@@ -27,7 +29,6 @@ def main(opt):
 
     net = DnCNN_c(channels=c, num_of_layers=opt.num_of_layers, num_of_est=2 * c)
     est_net = Estimation_direct(c, 2 * c)
-
 
     device_ids = [0]
     model = nn.DataParallel(net, device_ids=device_ids).cuda()
@@ -40,109 +41,112 @@ def main(opt):
     model_est.eval()
 
     # load data info
-    print('Loading data info ...\n')
-    files_source = glob.glob(os.path.join('data', opt.test_data, '*.*'))
-    files_source.sort()
+    print('Loading data info...\n')
 
     # process images with pre-defined noise level
-    for f in files_source:
-        print(f)
-        # file_name = f.split('/')[-1].split('.')[0]
-        file_name = os.path.basename(f).split(".")[0]
-        file_extension = os.path.basename(f).split(".")[1]
-        if opt.real_n == 2:  # have ground truth
-            gnd_file_path = os.path.join('data', opt.test_data_gnd, file_name + '_mean.png')
-            print(gnd_file_path)
-            Img_gnd = cv2.imread(gnd_file_path)
-            Img_gnd = Img_gnd[:, :, ::-1]
-            Img_gnd = cv2.resize(Img_gnd, (0, 0), fx=opt.scale, fy=opt.scale)
-            Img_gnd = img_normalize(np.float32(Img_gnd))
+    if opt.color == 1:
+        image_type = "color"
+    else:
+        image_type = "grayscale"
 
-        # image
-        Img = cv2.imread(f)  # input image with w*h*c
+    print("Starting to process: {input_file} of type {image_type}".format(input_file=input_file, image_type=image_type))
 
-        w, h, _ = Img.shape
-        Img = Img[:, :, ::-1]  # change it to RGB
-        Img = cv2.resize(Img, (0, 0), fx=opt.scale, fy=opt.scale)
-        if opt.color == 0:
-            Img = Img[:, :, 0]  # For gray images
-            Img = np.expand_dims(Img, 2)
-        pss = 1
-        if opt.ps == 1:
-            pss = decide_scale_factor(Img / 255., model_est, color=opt.color, thre=0.008, plot_flag=1, stopping=4,
-                                      mark=opt.out_dir + '/' + file_name)[0]
-            print(pss)
-            Img = pixelshuffle(Img, pss)
-        elif opt.ps == 2:
-            pss = opt.ps_scale
+    file_name = os.path.basename(input_file).split(".")[0]
+    #file_extension = os.path.basename(input_file).split(".")[1]
 
-        merge_out = np.zeros([w, h, 3])
-        noise_map_output = np.zeros([w, h, 3])
-        background_out = np.zeros([w, h, 3])
-        details_out = np.zeros([w, h, 3])
+    if opt.real_n == 2:  # have ground truth
+        gnd_file_path = os.path.join('data', opt.test_data_gnd, file_name + '_mean.png')
+        print(gnd_file_path)
+        Img_gnd = cv2.imread(gnd_file_path)
+        Img_gnd = Img_gnd[:, :, ::-1]
+        Img_gnd = cv2.resize(Img_gnd, (0, 0), fx=opt.scale, fy=opt.scale)
+        Img_gnd = img_normalize(np.float32(Img_gnd))
 
-        # print('Splitting and Testing.....')
+    # image
+    Img = cv2.imread(input_file)  # input image with w*h*c
 
-        i = 0
-        total_patches = 0
-        while i < w:
-            i_end = min(i + opt.wbin, w)
-            j = 0
-            while j < h:
-                j_end = min(j + opt.wbin, h)
-                j = j_end
-                total_patches += 1
-            i = i_end
+    w, h, _ = Img.shape
+    Img = Img[:, :, ::-1]  # change it to RGB
+    Img = cv2.resize(Img, (0, 0), fx=opt.scale, fy=opt.scale)
+    if opt.color == 0:
+        Img = Img[:, :, 0]  # For gray images
+        Img = np.expand_dims(Img, 2)
+    pss = 1
+    if opt.ps == 1:
+        pss = decide_scale_factor(Img / 255., model_est, color=opt.color, thre=0.008, plot_flag=1, stopping=4,
+                                  mark=opt.out_dir + '/' + file_name)[0]
+        print(pss)
+        Img = pixelshuffle(Img, pss)
+    elif opt.ps == 2:
+        pss = opt.ps_scale
 
-        bar = progressbar.ProgressBar(max_value=total_patches)
-        i = 0
-        patches = 0
-        while i < w:
-            i_end = min(i + opt.wbin, w)
-            j = 0
-            while j < h:
-                j_end = min(j + opt.wbin, h)
-                patch = Img[i:i_end, j:j_end, :]
-                bar.update(patches)
+    merge_out = np.zeros([w, h, 3])
+    noise_map_output = np.zeros([w, h, 3])
+    background_out = np.zeros([w, h, 3])
+    details_out = np.zeros([w, h, 3])
 
-                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch, c, pss, model,
-                                                                                             model_est, opt)
-                merge_out[i:i_end, j:j_end, :] = patch_merge_out_numpy
+    # print('Splitting and Testing.....')
 
-                noise_map_output[i:i_end, j:j_end, :] = noise_patch
-                details_out[i:i_end, j:j_end, :] = details_patch
-                background_out[i:i_end, j:j_end, :] = background_patch
+    i = 0
+    total_patches = 0
+    while i < w:
+        i_end = min(i + opt.wbin, w)
+        j = 0
+        while j < h:
+            j_end = min(j + opt.wbin, h)
+            j = j_end
+            total_patches += 1
+        i = i_end
 
-                j = j_end
-                patches += 1
-            i = i_end
+    bar = progressbar.ProgressBar(max_value=total_patches)
+    i = 0
+    patches = 0
+    while i < w:
+        i_end = min(i + opt.wbin, w)
+        j = 0
+        while j < h:
+            j_end = min(j + opt.wbin, h)
+            patch = Img[i:i_end, j:j_end, :]
+            bar.update(patches)
 
-        export_path_merged = os.path.normpath(
-            os.path.join(opt.out_dir, file_name + '_merged.png'))
+            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch, c, pss, model,
+                                                                                         model_est, opt)
+            merge_out[i:i_end, j:j_end, :] = patch_merge_out_numpy
 
-        export_path_noise = os.path.normpath(
-            os.path.join(opt.out_dir, file_name + '_noise_mask.png'))
+            noise_map_output[i:i_end, j:j_end, :] = noise_patch
+            details_out[i:i_end, j:j_end, :] = details_patch
+            background_out[i:i_end, j:j_end, :] = background_patch
 
-        export_path_details = os.path.normpath(
-            os.path.join(opt.out_dir, file_name + '_details.png'))
+            j = j_end
+            patches += 1
+        i = i_end
 
-        export_path_background = os.path.normpath(
-            os.path.join(opt.out_dir, file_name + '_background.png'))
+    export_path_merged = os.path.normpath(
+        os.path.join(opt.out_dir, file_name + '_merged.png'))
 
-        print("\nExporting images: ")
-        print(export_path_merged)
-        cv2.imwrite(export_path_merged, merge_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    export_path_noise = os.path.normpath(
+        os.path.join(opt.out_dir, file_name + '_noise_mask.png'))
 
-        print(export_path_noise)
-        cv2.imwrite(export_path_noise, noise_map_output[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    export_path_details = os.path.normpath(
+        os.path.join(opt.out_dir, file_name + '_details.png'))
 
-        print(export_path_details)
-        cv2.imwrite(export_path_details, details_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    export_path_background = os.path.normpath(
+        os.path.join(opt.out_dir, file_name + '_background.png'))
 
-        print(export_path_background)
-        cv2.imwrite(export_path_background, background_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    print("\nExporting images: ")
+    print(export_path_merged)
+    cv2.imwrite(export_path_merged, merge_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
 
-        print('done!')
+    print(export_path_noise)
+    cv2.imwrite(export_path_noise, noise_map_output[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+    print(export_path_details)
+    cv2.imwrite(export_path_details, details_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+    print(export_path_background)
+    cv2.imwrite(export_path_background, background_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+    print('done!')
 
 
 class Opt:
@@ -172,4 +176,16 @@ class Opt:
 
 
 if __name__ == "__main__":
-    main(Opt)
+    # load data info
+    print('Checking image types...')
+    files_source = glob.glob(os.path.join('data', Opt.test_data, '*.*'))
+    files_source.sort()
+
+    for f in files_source:
+        is_grayscale = utils.isgray(f)
+        if is_grayscale:
+            Opt.color = 0
+        else:
+            Opt.color = 1
+
+        main(f, Opt)
