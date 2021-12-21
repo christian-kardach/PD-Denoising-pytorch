@@ -3,6 +3,14 @@
 <br><br><br>
 
 # PD-Denoising
+
+### Modified fork for astro images
+For a tutorial of how to use you can find the blog post [here](https://www.thecrowsnestastro.com/2021/12/18/pytorch-pd-denoise-and-pixinsight/).
+
+Still very much work in progress and it does have some problems that I'm currently working on, but the initial process seems to be valid and a nice option to your processing!
+
+---
+
 ### [PyTorch](https://github.com/yzhouas/PD-Denoising-pytorch) |[Tech Report](https://arxiv.org/abs/1904.03485)
 This is the official pytorch implementation of the paper 'When AWGN-based Denoiser Meets Real Noises', and parts of the code are initialized from the pytorch implementation of [DnCNN-pytorch](https://github.com/SaoYan/DnCNN-PyTorch). We revised the basis model structure and data generation process, and rewrote the testing procedure to make it work for real noisy images. More details can be found in the code implementation.
 
