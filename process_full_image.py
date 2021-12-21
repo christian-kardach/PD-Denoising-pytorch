@@ -1,6 +1,6 @@
 import os
 import glob
-
+import argparse
 import utils
 from models import *
 from denoiser import *
@@ -176,7 +176,13 @@ class Opt:
 
 
 if __name__ == "__main__":
-    # load data info
+    # Set sample patch size
+    parser = argparse.ArgumentParser(description="PD-denoising")
+    parser.add_argument("--wbin", type=int, default=512, help='patch size while testing on full images')
+    args = parser.parse_args()
+    Opt.wbin = args.wbin
+
+    # Check images
     print('Checking image types...')
     files_source = glob.glob(os.path.join('data', Opt.test_data, '*.*'))
     files_source.sort()
