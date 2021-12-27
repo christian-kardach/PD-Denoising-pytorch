@@ -21,6 +21,14 @@ def isgray(imgpath):
     return False
 
 
+def img_normalize(data):
+    return data / 255.
+
+
+def img_normalize_tiff(data):
+    return data / 65536.
+
+
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
@@ -72,6 +80,26 @@ def data_augmentation(image, mode):
         out = np.rot90(out, k=3)
         out = np.flipud(out)
     return np.transpose(out, (2, 0, 1))
+
+
+def visual_va2np_tiff(Out, mode=1, ps=0, pss=1, scal=1, rescale=0, w=10, h=10, c=3, refill=0, refill_img=0,
+                 refill_ind=[0, 0]):
+    if mode == 0 or mode == 1 or mode == 3:
+        out_numpy = Out.data.squeeze(0).cpu().numpy()
+    elif mode == 2:
+        out_numpy = Out.data.squeeze(1).cpu().numpy()
+    if out_numpy.shape[0] == 1:
+        out_numpy = np.tile(out_numpy, (3, 1, 1))
+    if mode == 0 or mode == 1:
+        out_numpy = (np.transpose(out_numpy, (1, 2, 0))) * 65536.0 * scal
+    else:
+        out_numpy = (np.transpose(out_numpy, (1, 2, 0)))
+
+    if ps == 1:
+        out_numpy = reverse_pixelshuffle(out_numpy, pss, refill, refill_img, refill_ind)
+    if rescale == 1:
+        out_numpy = cv2.resize(out_numpy, (h, w))
+    return out_numpy
 
 
 def visual_va2np(Out, mode=1, ps=0, pss=1, scal=1, rescale=0, w=10, h=10, c=3, refill=0, refill_img=0,

@@ -9,6 +9,9 @@ For a tutorial of how to use you can find the blog post [here](https://www.thecr
 
 Still very much work in progress and it does have some problems that I'm currently working on, but the initial process seems to be valid and a nice option to your processing!
 
+* Dec 27th 2021 - Added 16bit TIF support
+
+
 ---
 
 ### [PyTorch](https://github.com/yzhouas/PD-Denoising-pytorch) |[Tech Report](https://arxiv.org/abs/1904.03485)

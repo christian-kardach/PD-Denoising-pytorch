@@ -1,17 +1,15 @@
 import os
 import glob
 import argparse
+import progressbar
+import tifffile
+
 import utils
 from models import *
 from denoiser import *
-import progressbar
 
 # the limitation range of each type of noise level: [0]Gaussian [1]Impulse
 limit_set = [[0, 75], [0, 80]]
-
-
-def img_normalize(data):
-    return data / 255.
 
 
 def main(input_file, opt):
@@ -20,6 +18,7 @@ def main(input_file, opt):
 
     # Build model
     print('Loading model...')
+
     c = 1 if opt.color == 0 else 3
 
     if opt.color == 0:
@@ -52,7 +51,7 @@ def main(input_file, opt):
     print("Starting to process: {input_file} of type {image_type}".format(input_file=input_file, image_type=image_type))
 
     file_name = os.path.basename(input_file).split(".")[0]
-    #file_extension = os.path.basename(input_file).split(".")[1]
+    file_extension = os.path.basename(input_file).split(".")[1]
 
     if opt.real_n == 2:  # have ground truth
         gnd_file_path = os.path.join('data', opt.test_data_gnd, file_name + '_mean.png')
@@ -60,12 +59,17 @@ def main(input_file, opt):
         Img_gnd = cv2.imread(gnd_file_path)
         Img_gnd = Img_gnd[:, :, ::-1]
         Img_gnd = cv2.resize(Img_gnd, (0, 0), fx=opt.scale, fy=opt.scale)
-        Img_gnd = img_normalize(np.float32(Img_gnd))
+        Img_gnd = utils.img_normalize(np.float32(Img_gnd))
 
     # image
-    Img = cv2.imread(input_file)  # input image with w*h*c
+    if file_extension == "tif":
+        opt.tif_file = True
+        Img = tifffile.imread(input_file)
+    else:
+        Img = cv2.imread(input_file)  # input image with w*h*c
 
     w, h, _ = Img.shape
+    print(w, h)
     Img = Img[:, :, ::-1]  # change it to RGB
     Img = cv2.resize(Img, (0, 0), fx=opt.scale, fy=opt.scale)
     if opt.color == 0:
@@ -87,6 +91,7 @@ def main(input_file, opt):
 
     # print('Splitting and Testing.....')
 
+    # Calculate number of patches
     i = 0
     total_patches = 0
     while i < w:
@@ -120,32 +125,41 @@ def main(input_file, opt):
             j = j_end
             patches += 1
         i = i_end
+    if opt.tif_file:
+        export_path_noise = os.path.normpath(
+            os.path.join(opt.out_dir, file_name + '_noise_mask.tif'))
 
+    else:
+        export_path_noise = os.path.normpath(
+            os.path.join(opt.out_dir, file_name + '_noise_mask.png'))
+
+    """
     export_path_merged = os.path.normpath(
         os.path.join(opt.out_dir, file_name + '_merged.png'))
-
-    export_path_noise = os.path.normpath(
-        os.path.join(opt.out_dir, file_name + '_noise_mask.png'))
-
+    
     export_path_details = os.path.normpath(
         os.path.join(opt.out_dir, file_name + '_details.png'))
 
     export_path_background = os.path.normpath(
         os.path.join(opt.out_dir, file_name + '_background.png'))
-
+    """
     print("\nExporting images: ")
+    print(export_path_noise)
+    if opt.tif_file:
+        tifffile.imwrite(export_path_noise, noise_map_output[:, :, ::-1], photometric='rgb')
+    else:
+        cv2.imwrite(export_path_noise, noise_map_output[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+    """
     print(export_path_merged)
     cv2.imwrite(export_path_merged, merge_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-
-    print(export_path_noise)
-    cv2.imwrite(export_path_noise, noise_map_output[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
 
     print(export_path_details)
     cv2.imwrite(export_path_details, details_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
 
     print(export_path_background)
     cv2.imwrite(export_path_background, background_out[:, :, ::-1], [cv2.IMWRITE_PNG_COMPRESSION, 0])
-
+    """
     print('done!')
 
 
@@ -173,12 +187,13 @@ class Opt:
     test_noise_level = None
     wbin = 128
     zeroout = 0
+    tif_file = False
 
 
 if __name__ == "__main__":
     # Set sample patch size
     parser = argparse.ArgumentParser(description="PD-denoising")
-    parser.add_argument("--wbin", type=int, default=512, help='patch size while testing on full images')
+    parser.add_argument("--wbin", type=int, default=128, help='patch size while testing on full images')
     args = parser.parse_args()
     Opt.wbin = args.wbin
 

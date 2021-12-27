@@ -4,14 +4,13 @@ from utils import *
 limit_set = [[0, 75], [0, 80]]
 
 
-def img_normalize(data):
-    return data / 255.
-
-
 def denoiser(img, c, pss, model, model_est, opt):
     w, h, _ = img.shape
     img = pixelshuffle(img, pss)
-    img = img_normalize(np.float32(img))
+    if opt.tif_file:
+        img = img_normalize_tiff(np.float32(img))
+    else:
+        img = img_normalize(np.float32(img))
 
     noise_level_list = np.zeros((2 * c, 1))  # two noise types with three channels
     if opt.cond == 0:  # if we use the ground truth of noise for denoising, and only one single noise type
@@ -23,7 +22,10 @@ def denoiser(img, c, pss, model, model_est, opt):
     ISource = np2ts(img)
     # noisy image and true residual
     if opt.real_n == 0 and opt.spat_n == 0:  # no spatial noise setting, and synthetic noise
-        noisy_img = generate_comp_noisy(img, np.array(opt.test_noise_level) / 255.)
+        if opt.tif_file:
+            noisy_img = generate_comp_noisy(img, np.array(opt.test_noise_level) / 65536.)
+        else:
+            noisy_img = generate_comp_noisy(img, np.array(opt.test_noise_level) / 255.)
         if opt.color == 0:
             noisy_img = np.expand_dims(noisy_img[:, :, 0], 2)
     elif opt.real_n == 1 or opt.real_n == 2:  # testing real noisy images
@@ -36,7 +38,7 @@ def denoiser(img, c, pss, model, model_est, opt):
     ISource, INoisy, True_Res = ISource.cuda(), INoisy.cuda(), True_Res.cuda()
 
     if opt.mode == "MC":
-        # obtain the corrresponding input_map
+        # obtain the corresponding input_map
         if opt.cond == 0 or opt.cond == 2:  # if we use ground choose level or the given fixed level
             # normalize noise leve map to [0,1]
             noise_level_list_n = np.zeros((2 * c, 1))
@@ -52,6 +54,7 @@ def denoiser(img, c, pss, model, model_est, opt):
                                                (2 * c, img.shape[0], img.shape[1]))
             NM_tensor = torch.from_numpy(noise_map).type(torch.FloatTensor)
             NM_tensor = NM_tensor.cuda()
+
         # use the estimated noise-level map for blind denoising
         elif opt.cond == 1:  # if we use the estimated map directly
             NM_tensor = torch.clamp(model_est(INoisy), 0., 1.)
@@ -60,10 +63,10 @@ def denoiser(img, c, pss, model, model_est, opt):
                                                 2 * c)  # refine_opt can be max, freq and their average
                 NM_tensor = NM_tensor_bundle[0]
                 noise_estimation_table = np.reshape(NM_tensor_bundle[1], (2 * c,))
+
             if opt.zeroout == 1:
                 NM_tensor = zeroing_out_maps(NM_tensor, opt.keep_ind)
         Res = model(INoisy, NM_tensor)
-
 
     elif opt.mode == "B":
         Res = model(INoisy)
@@ -76,7 +79,10 @@ def denoiser(img, c, pss, model, model_est, opt):
     max_Out = torch.clamp(INoisy - max_Res, 0., 1.)
     max_out_numpy = visual_va2np(max_Out, opt.color, opt.ps, pss, 1, opt.rescale, w, h, c)
 
-    noise_map_output = visual_va2np(max_Res, opt.color, opt.ps, pss, 1, opt.rescale, w, h, c)
+    if opt.tif_file:
+        noise_map_output = visual_va2np_tiff(max_Res, opt.color, opt.ps, pss, 1, opt.rescale, w, h, c)
+    else:
+        noise_map_output = visual_va2np(max_Res, opt.color, opt.ps, pss, 1, opt.rescale, w, h, c)
 
     del max_Out
     del max_Res
@@ -84,7 +90,7 @@ def denoiser(img, c, pss, model, model_est, opt):
 
     if (opt.ps == 1 or opt.ps == 2) and pss != 1:  # pixelshuffle multi-scale
         # create batch of images with one subsitution
-        mosaic_den = visual_va2np(Out, opt.color, 1, pss, 1, opt.rescale, w, h, c)
+        # mosaic_den = visual_va2np(Out, opt.color, 1, pss, 1, opt.rescale, w, h, c)
         out_numpy = np.zeros((pss ** 2, c, w, h))
 
         # compute all the images in the ps scale set
