@@ -195,7 +195,7 @@ def get_cdf_noise_in_maps(lm, thre=0.8, chn=3):
             F = np.cumsum(H) * dx
             F_ind = np.where(F > 0.9)[0][0]
             nl_list[n, c] = x[F_ind]
-            print(nl_list[n, c])
+            # print(nl_list[n, c])
     return nl_list
 
 
@@ -323,7 +323,7 @@ def zeroing_out_maps(lm, keep=0):
     for c in range(lm_numpy.shape[2]):
         if np.isin(c, keep) == 0:
             ref_lm_numpy[:, :, c] = 0.
-    print(ref_lm_numpy)
+    # print(ref_lm_numpy)
     RF_tensor = np2ts(ref_lm_numpy)
     RF_tensor = RF_tensor.cuda()
     return RF_tensor
@@ -349,7 +349,6 @@ def level_refine(NM_tensor, ref_mode, chn=3):
 
             if ref_mode == 4:  # half the estimation
                 nl_list = nl_list - nl_list
-            print(nl_list)
         elif ref_mode == 1:
             nl_list = get_max_noise_in_maps(NM_tensor, chn)
         elif ref_mode == 5:
@@ -365,14 +364,14 @@ def level_refine(NM_tensor, ref_mode, chn=3):
 
     elif ref_mode == 2:
         RF_tensor = get_smooth_maps(NM_tensor, 10, 5)
+
     elif ref_mode == 3:
         lb = get_salient_noise_in_maps(NM_tensor)
         up = get_max_noise_in_maps(NM_tensor)
         nl_list = (lb + up) * 0.5
         noise_map = np.zeros(
             (1, chn, NM_tensor.size()[2], NM_tensor.size()[3]))  # initialize the noise map before concatenating
-        noise_map[0, :, :, :] = np.reshape(np.tile(nl_list, NM_tensor.size()[2] * NM_tensor.size()[3]),
-                                           (chn, NM_tensor.size()[2], NM_tensor.size()[3]))
+        noise_map[0, :, :, :] = np.reshape(np.tile(nl_list, NM_tensor.size()[2] * NM_tensor.size()[3]), (chn, NM_tensor.size()[2], NM_tensor.size()[3]))
         RF_tensor = torch.from_numpy(noise_map).type(torch.FloatTensor)
         RF_tensor = RF_tensor.cuda()
 
