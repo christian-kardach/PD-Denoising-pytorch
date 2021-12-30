@@ -5,7 +5,6 @@ import argparse
 import numpy as np
 import progressbar
 import tifffile
-from tiler import Tiler, Merger
 import cv2
 
 import utils
