@@ -18,51 +18,6 @@ DEBUG_OUTPUT = False
 limit_set = [[0, 75], [0, 80]]
 
 
-def split(img, window_size, margin):
-
-    sh = list(img.shape)
-    sh[0], sh[1] = sh[0] + margin * 2, sh[1] + margin * 2
-    img_ = np.zeros(shape=sh)
-    img_[margin:-margin, margin:-margin] = img
-
-    stride = window_size
-    step = window_size + 2 * margin
-
-    nrows, ncols = img.shape[0] // window_size, img.shape[1] // window_size
-    splitted = []
-    for i in range(nrows):
-        for j in range(ncols):
-            h_start = j*stride
-            v_start = i*stride
-            cropped = img_[v_start:v_start+step, h_start:h_start+step]
-            splitted.append(cropped)
-    return splitted
-
-"""
-def unsplit(img, patches, window_size, margin):
-    stride = window_size
-    step = window_size + 2 * margin
-
-    nrows, ncols = img.shape[0] // window_size, img.shape[1] // window_size
-    for i in range(nrows):
-        for j in range(ncols):
-            h_start = j * stride
-            v_start = i * stride
-            cropped = img_[v_start:v_start + step, h_start:h_start + step]
-
-    return img
-"""
-
-"""
-def process_tile(input_img, output_img tile_dim, margins=[0,0,0,0]):
-    patch_data = Img[patch.y:patch.y_end + margin, patch.x:patch.x_end + margin, :]
-    patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss, model, model_est, opt)
-
-    noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            0:patch.patch_size_y,
-                                                                            0:patch.patch_size_x, ::-1]
-"""
-
 def calculate_number_of_patches(img, opt):
     w, h, _ = img.shape
     i = 0
@@ -185,115 +140,49 @@ def main(input_file, opt):
             noise_map_output = cv2.rectangle(noise_map_output, (patch.x, patch.y), (patch.x_end, patch.y_end), dark_grey,
                                              thickness)
 
-    # So a 1920x1080 image will be 1080 ROWS by 1920 COLUMNS (1080,1920)
-    # TODO: Write a re-usable function for handling margins and patches
-    bar = progressbar.ProgressBar(max_value=zl.patch_count)
-    patches_done = 0
-    for patch in zl.patches:
-        # Top Left
-        if patch.column == 0 and patch.row == 0:
-            patch_data = Img[patch.y:patch.y_end + margin, patch.x:patch.x_end + margin, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss, model,
-                                                                                           model_est, opt)
+    if opt.new_slicer:
+        # So a 1920x1080 image will be 1080 ROWS by 1920 COLUMNS (1080,1920)
+        # TODO: Write a re-usable function for handling margins and patches
+        bar = progressbar.ProgressBar(max_value=zl.patch_count)
+        patches_done = 0
+        for patch in zl.patches:
+            # Top Left
+            if patch.column == 0 and patch.row == 0:
+                patch_data = Img[patch.y:patch.y_end + margin, patch.x:patch.x_end + margin, :]
+                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss, model,
+                                                                                               model_est, opt)
 
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            0:patch.patch_size_y,
-                                                                            0:patch.patch_size_x, ::-1]
-            patch.done = True
+                noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                0:patch.patch_size_y,
+                                                                                0:patch.patch_size_x, :]
+                patch.done = True
 
-        # Bottom Left
-        if patch.row == zl.rows and patch.column == 0:
-            patch_data = Img[patch.y-margin:patch.y_end, patch.x:patch.x_end + margin, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss, model,
-                                                                                           model_est, opt)
+            # Bottom Left
+            if patch.row == zl.rows and patch.column == 0:
+                patch_data = Img[patch.y-margin:patch.y_end, patch.x:patch.x_end + margin, :]
+                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss, model,
+                                                                                               model_est, opt)
 
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            margin:patch.patch_size_y+margin,
-                                                                            0:patch.patch_size_x, ::-1]
-            patch.done = True
+                noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                margin:patch.patch_size_y+margin,
+                                                                                0:patch.patch_size_x, :]
+                patch.done = True
 
-        # Top Right
-        elif patch.column == zl.columns and patch.row == 0:
-            patch_data = Img[patch.y:patch.y_end+margin, patch.x-margin:patch.x_end, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
-                                                                                           model,
-                                                                                           model_est, opt)
+            # Top Right
+            elif patch.column == zl.columns and patch.row == 0:
+                patch_data = Img[patch.y:patch.y_end+margin, patch.x-margin:patch.x_end, :]
+                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
+                                                                                               model,
+                                                                                               model_est, opt)
 
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            0:patch.patch_size_y,
-                                                                            margin:patch.patch_size_x+margin, ::-1]
-            patch.done = True
+                noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                0:patch.patch_size_y,
+                                                                                margin:patch.patch_size_x+margin, :]
+                patch.done = True
 
-        # Bottom Right
-        elif patch.column == zl.columns and patch.row == zl.rows:
-            patch_data = Img[patch.y-margin:patch.y_end, patch.x-margin:patch.x_end, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
-                                                                                           model,
-                                                                                           model_est, opt)
-
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            margin:patch.patch_size_y+margin,
-                                                                            margin:patch.patch_size_x+margin,
-                                                                            ::-1]
-
-            patch.done = True
-
-        # Top Row
-        elif patch.row == 0 and not patch.done:
-            patch_data = Img[patch.y:patch.y_end+margin, patch.x-margin:patch.x_end+margin, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
-                                                                                           model,
-                                                                                           model_est, opt)
-
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            0:patch.patch_size_y,
-                                                                            margin:patch.patch_size_x+margin,
-                                                                            ::-1]
-            patch.done = True
-
-        # Left Column
-        elif patch.column == 0 and not patch.done:
-            patch_data = Img[patch.y-margin:patch.y_end+margin, patch.x:patch.x_end+margin, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
-                                                                                           model,
-                                                                                           model_est, opt)
-
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            margin:patch.patch_size_y+margin,
-                                                                            0:patch.patch_size_x,
-                                                                            ::-1]
-            patch.done = True
-
-        # Bottom Row
-        elif patch.row == zl.rows and not patch.done:
-            patch_data = Img[patch.y-margin:patch.y_end, patch.x - margin:patch.x_end + margin, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
-                                                                                           model,
-                                                                                           model_est, opt)
-
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            margin:patch.patch_size_y+margin,
-                                                                            margin:patch.patch_size_x + margin,
-                                                                            ::-1]
-            patch.done = True
-
-        # Right Column
-        elif patch.column == zl.columns and not patch.done:
-            patch_data = Img[patch.y-margin:patch.y_end+margin, patch.x-margin:patch.x_end, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
-                                                                                           model,
-                                                                                           model_est, opt)
-
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            margin:patch.patch_size_y+margin,
-                                                                            margin:patch.patch_size_x+margin, ::-1]
-            patch.done = True
-
-        # Second to last row - need to make sure we have coverage for padding
-        elif patch.row == zl.rows-1 and not patch.done:
-            test_patch = zl.get_bottom_sample()
-            if test_patch.patch_size_y >= margin:
-                patch_data = Img[patch.y-margin:patch.y_end+margin, patch.x-margin:patch.x_end+margin, :]
+            # Bottom Right
+            elif patch.column == zl.columns and patch.row == zl.rows:
+                patch_data = Img[patch.y-margin:patch.y_end, patch.x-margin:patch.x_end, :]
                 patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
                                                                                                model,
                                                                                                model_est, opt)
@@ -301,39 +190,119 @@ def main(input_file, opt):
                 noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
                                                                                 margin:patch.patch_size_y+margin,
                                                                                 margin:patch.patch_size_x+margin,
-                                                                                ::-1]
+                                                                                :]
+
                 patch.done = True
 
-            else:
-                patch_data = Img[patch.y - margin:patch.y_end + test_patch.patch_size_y, patch.x - margin:patch.x_end + margin, :]
+            # Top Row
+            elif patch.row == 0 and not patch.done:
+                patch_data = Img[patch.y:patch.y_end+margin, patch.x-margin:patch.x_end+margin, :]
                 patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
                                                                                                model,
                                                                                                model_est, opt)
 
                 noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                                margin:patch.patch_size_y + test_patch.patch_size_y,
-                                                                                margin:patch.patch_size_x + margin,
-                                                                                ::-1]
+                                                                                0:patch.patch_size_y,
+                                                                                margin:patch.patch_size_x+margin,
+                                                                                :]
                 patch.done = True
 
-        # Second to last row - need to make sure we have coverage for padding
-        elif patch.column == zl.columns - 1 and not patch.done:
-            test_patch = zl.get_right_sample()
-            if test_patch.patch_size_x >= margin:
-                patch_data = Img[patch.y - margin:patch.y_end + margin, patch.x - margin:patch.x_end + margin, :]
+            # Left Column
+            elif patch.column == 0 and not patch.done:
+                patch_data = Img[patch.y-margin:patch.y_end+margin, patch.x:patch.x_end+margin, :]
                 patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
                                                                                                model,
                                                                                                model_est, opt)
 
                 noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                                margin:patch.patch_size_y + margin,
-                                                                                margin:patch.patch_size_x + margin,
-                                                                                ::-1]
+                                                                                margin:patch.patch_size_y+margin,
+                                                                                0:patch.patch_size_x,
+                                                                                :]
                 patch.done = True
 
-            else:
+            # Bottom Row
+            elif patch.row == zl.rows and not patch.done:
+                patch_data = Img[patch.y-margin:patch.y_end, patch.x - margin:patch.x_end + margin, :]
+                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
+                                                                                               model,
+                                                                                               model_est, opt)
+
+                noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                margin:patch.patch_size_y+margin,
+                                                                                margin:patch.patch_size_x + margin,
+                                                                                :]
+                patch.done = True
+
+            # Right Column
+            elif patch.column == zl.columns and not patch.done:
+                patch_data = Img[patch.y-margin:patch.y_end+margin, patch.x-margin:patch.x_end, :]
+                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
+                                                                                               model,
+                                                                                               model_est, opt)
+
+                noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                margin:patch.patch_size_y+margin,
+                                                                                margin:patch.patch_size_x+margin, :]
+                patch.done = True
+
+            # Second to last row - need to make sure we have coverage for padding
+            elif patch.row == zl.rows-1 and not patch.done:
+                test_patch = zl.get_bottom_sample()
+                if test_patch.patch_size_y >= margin:
+                    patch_data = Img[patch.y-margin:patch.y_end+margin, patch.x-margin:patch.x_end+margin, :]
+                    patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
+                                                                                                   model,
+                                                                                                   model_est, opt)
+
+                    noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                    margin:patch.patch_size_y+margin,
+                                                                                    margin:patch.patch_size_x+margin,
+                                                                                    :]
+                    patch.done = True
+
+                else:
+                    patch_data = Img[patch.y - margin:patch.y_end + test_patch.patch_size_y, patch.x - margin:patch.x_end + margin, :]
+                    patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
+                                                                                                   model,
+                                                                                                   model_est, opt)
+
+                    noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                    margin:patch.patch_size_y + margin,
+                                                                                    margin:patch.patch_size_x + margin,
+                                                                                    :]
+                    patch.done = True
+
+            # Second to last row - need to make sure we have coverage for padding
+            elif patch.column == zl.columns - 1 and not patch.done:
+                test_patch = zl.get_right_sample()
+                if test_patch.patch_size_x >= margin:
+                    patch_data = Img[patch.y - margin:patch.y_end + margin, patch.x - margin:patch.x_end + margin, :]
+                    patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
+                                                                                                   model,
+                                                                                                   model_est, opt)
+
+                    noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                    margin:patch.patch_size_y + margin,
+                                                                                    margin:patch.patch_size_x + margin,
+                                                                                    :]
+                    patch.done = True
+
+                else:
+                    patch_data = Img[patch.y - margin:patch.y_end + margin,
+                                 patch.x - margin:patch.x_end + test_patch.patch_size_x, :]
+                    patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
+                                                                                                   model,
+                                                                                                   model_est, opt)
+
+                    noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
+                                                                                    margin:patch.patch_size_y + margin,
+                                                                                    margin:patch.patch_size_x + margin,
+                                                                                    :]
+                    patch.done = True
+
+            elif not patch.done:
                 patch_data = Img[patch.y - margin:patch.y_end + margin,
-                             patch.x - margin:patch.x_end + test_patch.patch_size_x, :]
+                             patch.x - margin:patch.x_end + margin, :]
                 patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
                                                                                                model,
                                                                                                model_est, opt)
@@ -341,24 +310,35 @@ def main(input_file, opt):
                 noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
                                                                                 margin:patch.patch_size_y + margin,
                                                                                 margin:patch.patch_size_x + margin,
-                                                                                ::-1]
+                                                                                :]
                 patch.done = True
 
-        elif not patch.done:
-            patch_data = Img[patch.y - margin:patch.y_end + margin,
-                         patch.x - margin:patch.x_end + margin, :]
-            patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
-                                                                                           model,
-                                                                                           model_est, opt)
+            bar.update(patches_done)
+            patches_done += 1
 
-            noise_map_output[patch.y:patch.y_end, patch.x:patch.x_end, :] = noise_patch[
-                                                                            margin:patch.patch_size_y + margin,
-                                                                            margin:patch.patch_size_x + margin,
-                                                                            ::-1]
-            patch.done = True
+    else:
+        # ORIGINAL
+        img_rows, img_cols, _ = Img.shape
+        noise_map_output = np.zeros([rows, cols, 3])
+        patch_count = 0
+        i = 0
+        while i < img_rows:
+            i_end = min(i + opt.wbin, img_rows)
 
-        bar.update(patches_done)
-        patches_done += 1
+            j = 0
+            while j < img_cols:
+                j_end = min(j + opt.wbin, img_cols)
+                patch = Img[i:i_end, j:j_end, :]
+                # bar.update(total_patches)
+
+                patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch, c, pss, model,
+                                                                                               model_est, opt)
+
+                noise_map_output[i:i_end, j:j_end, :] = noise_patch
+
+                j = j_end
+                patch_count += 1
+            i = i_end
 
     if DEBUG_OUTPUT:
         cv2.namedWindow("result", cv2.WINDOW_NORMAL)
@@ -409,6 +389,7 @@ class Opt:
     patch_margin = 20
     zeroout = 0
     tif_file = False
+    new_slicer = True
 
 
 if __name__ == "__main__":
