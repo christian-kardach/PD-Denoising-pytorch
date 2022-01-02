@@ -251,8 +251,7 @@ def main(input_file, opt):
 
             # Second to last row - need to make sure we have coverage for padding
             elif patch.row == zl.rows - 1 and not patch.done:
-                test_patch = zl.get_bottom_sample()
-                if test_patch.patch_size_y >= margin:
+                if zl.bottom_edge_sample.patch_size_y >= margin:
                     patch_data = Img[patch.y - margin:patch.y_end + margin, patch.x - margin:patch.x_end + margin, :]
                     patch_merge_out_numpy, noise_patch, details_patch, background_patch = denoiser(patch_data, c, pss,
                                                                                                    model,

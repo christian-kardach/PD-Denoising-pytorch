@@ -29,7 +29,13 @@ class Zlicer:
 
         self.patches = list()
 
+        self.bottom_edge_sample = None
+        self.right_edge_sample = None
+
         self.initialize()
+
+        self.bottom_edge_sample = self.get_bottom_sample()
+        self.right_edge_sample = self.get_right_sample()
 
     def initialize(self):
         self.patch_count = 0
@@ -57,9 +63,7 @@ class Zlicer:
             i = i_end
 
     def get_bottom_sample(self):
-        for patch in self.patches:
-            if patch.row == self.rows:
-                return patch
+        return self.patches[len(self.patches)-2]
 
     def get_right_sample(self):
         for patch in self.patches:
